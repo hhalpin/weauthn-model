@@ -1,0 +1,95 @@
+free c:channel.
+
+type AttestationPublicKey.
+type AttestationPrivatekey.
+type nonce.
+type pkey.
+type skey.
+type host.
+type key.
+type RP_id.
+
+
+(*For Digital Signatures *)
+
+fun spk(skey):pkey.
+fun sign(bitstring, skey):bitstring.
+reduc forall x:bitstring, y:skey; getmess(sign(x, y)) = x.
+reduc forall x:bitstring, y:skey; checksign(sign(x, y), spk(y)) = x.
+
+(*For nonces*)
+
+fun nonce_to_bitstring ( nonce ) : bitstring [ data , typeConverter ] .
+table nonceTable(nonce) .
+
+(*For Digital signature over Attestation Credentials*)
+
+fun spkAtt(AttestationPrivatekey):AttestationPublicKey.
+fun signAtt(bitstring, AttestationPrivatekey):bitstring.
+reduc forall x:bitstring, y:AttestationPrivatekey; getmessAtt(signAtt(x, y)) = x.
+reduc forall x:bitstring, y:AttestationPrivatekey; checksignAtt(signAtt(x, y), spkAtt(y)) = x.
+
+(*Symetric encryption*)
+
+fun senc(bitstring, key): bitstring.
+reduc forall x: bitstring, k: key; sdec(senc(x,k),k) = x.
+
+
+(*User's ID  and Server's ID*)
+const cert:bitstring [private].
+const a:RP_id [private].
+const credentialID2:bitstring [private].
+
+(*Table*)
+table tableAtt(AttestationPublicKey).
+
+(*Events and Queries*)
+
+event reachSameKey(AttestationPublicKey).
+
+
+query N1:AttestationPublicKey; event(reachSameKey(N1)).
+
+free attskU: AttestationPrivatekey[private].
+query attacker(attskU).
+free attpkU: AttestationPublicKey[private].
+query attacker(attpkU).
+
+const k:key.
+let processUser ( k: key,cert:bitstring, attskA: AttestationPrivatekey, attpkA:AttestationPublicKey) =
+    (*Registration*)
+    in(c,s:bitstring);
+    let(challengeU:nonce, aU:RP_id)= sdec(s,k) in
+    new skU:skey;
+    let pkU = spk(skU) in
+
+    out(c,senc(signAtt((pkU, attpkU, cert,challengeU), attskU),k))
+    .
+
+
+let processServer (k: key, a:RP_id) =    
+    
+    (*Registration*)
+    new challenge:nonce;
+ 
+    new attpkU3: AttestationPublicKey;
+    let ver1=(challenge,a) in
+    out(c, senc((challenge,a),k));
+
+    in(c, s:bitstring);
+  
+    let m= sdec(s,k) in
+    let (pkY1: pkey, attpkU1:AttestationPublicKey, cert: bitstring, Nt:nonce) = getmessAtt(m) in
+    let ver = checksignAtt(m, attpkU1) in
+
+   get tableAtt(= attpkU1) in event reachSameKey(attpkU1)
+   else insert tableAtt(attpkU1).
+
+process
+  new attskU:AttestationPrivatekey;
+  let attpkU = spkAtt(attskU) in
+  (      
+    !processUser( k, cert, attskU,attpkU) | !processServer(k, a)
+  )
+   
+    

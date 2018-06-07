@@ -1,0 +1,113 @@
+free c:channel.
+
+type AttestationPublicKey.
+type AttestationPrivatekey.
+type nonce.
+type pkey.
+type skey.
+type host.
+type RP_id.
+type key.
+
+
+(*For Digital Signatures *)
+
+fun spk(skey):pkey.
+fun sign(bitstring, skey):bitstring.
+reduc forall x:bitstring, y:skey; getmess(sign(x, y)) = x.
+reduc forall x:bitstring, y:skey; checksign(sign(x, y), spk(y)) = x.
+
+(*For nonces*)
+
+fun nonce_to_bitstring ( nonce ) : bitstring [ data , typeConverter ] .
+table nonceTable(nonce) .
+
+(*For Digital signature over Attestation Credentials*)
+
+fun spkAtt(AttestationPrivatekey):AttestationPublicKey.
+fun signAtt(bitstring, AttestationPrivatekey):bitstring.
+reduc forall x:bitstring, y:AttestationPrivatekey; getmessAtt(signAtt(x, y)) = x.
+reduc forall x:bitstring, y:AttestationPrivatekey; checksignAtt(signAtt(x, y), spkAtt(y)) = x.
+
+free attskU: AttestationPrivatekey[private].
+free attpkU: AttestationPrivatekey[private].
+
+
+
+free k: key[private].
+(*Symetric encryption*)
+
+fun senc(bitstring, key): bitstring.
+reduc forall x: bitstring, k: key; sdec(senc(x,k),k) = x.
+
+
+(*User's ID  and Server's ID*)
+const cookie:bitstring [private].
+const attestation_cert:bitstring [private].
+const a: RP_id[private].
+
+
+
+(*Events and Queries*)
+
+event sentChallengeResponse(bitstring, bitstring).
+event validChallengeResponse(bitstring, bitstring).
+query N:bitstring, s:bitstring; event(validChallengeResponse(N, s)) ==> event(sentChallengeResponse(N, s)).
+
+(* query N:bitstring; event(reachAuthentication(N)).
+event reachAuthentication(bitstring). *)
+
+query attacker(attskU).
+query attacker(attpkU).
+query attacker(k).
+
+let processUser ( k: key, attskU: AttestationPrivatekey, attpkU:AttestationPublicKey,attestation_cert:bitstring) =
+    (*Registration*)
+    in(c,s:bitstring);
+    let(challengeU:nonce, a:RP_id)= sdec(s,k) in
+    new skU:skey;
+    let pkU = spk(skU) in
+    out(c, senc((attestation_cert,signAtt((pkU, attpkU,challengeU), attskU)),k));
+    
+    
+    (*Authentication*)
+    in(c, s1:bitstring);    
+    let mess1= sdec(s1,k) in
+    event sentChallengeResponse(mess1, sign(senc(mess1,k), skU));
+    out(c, sign(senc(mess1,k), skU)).
+
+let processServer (k: key, a:RP_id) =    
+    
+    (*Registration*)
+    new challenge1:nonce;
+    out(c, senc((challenge1,a),k));
+    in(c, s:bitstring);
+    let m= sdec(s,k) in
+    let (cert:bitstring, pkY1: pkey, attpkU1:AttestationPublicKey, credUser: bitstring, Nt:nonce) = getmessAtt(m) in
+    let ver = checksignAtt(m, attpkU1) in
+
+    if (Nt=challenge1) then (
+    new challenge2:nonce;
+    let mess= nonce_to_bitstring ( challenge2 ) in
+    out(c,senc ((mess,a),k));
+
+    (*Authentication*)
+    in(c, s2:bitstring); 
+    let m1= sdec(s2,k) in
+    let m2 = checksign(m1, pkY1) in
+    let m3 = getmess(s2) in
+    if ( m3= getmess(s2)) then (
+    event validChallengeResponse(m3, s2)     
+    ))
+    . 
+    
+
+process
+  new k:key;
+  new attskU:AttestationPrivatekey;
+  let attpkU = spkAtt(attskU) in
+  (      
+    !processUser( k, attskU,attpkU,attestation_cert) | !processServer(k, a)
+  )
+   
+    
