@@ -1,3 +1,9 @@
+(* ProVerif Web Authentication Formal Model
+   originally by Iness Ben Guirat and Harry Halpin
+   https://dl.acm.org/doi/10.1145/3190619.3190640
+   github: https://github.com/hhalpin/weauthn-model
+*)
+
 free c:channel.
 
 type AttestationPublicKey.
@@ -110,4 +116,3 @@ process
     !processUser( k, attskU,attpkU,attestation_cert) | !processServer(k, a)
   )
    
-    
